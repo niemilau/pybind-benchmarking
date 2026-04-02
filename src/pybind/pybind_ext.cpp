@@ -3,66 +3,113 @@
 #define _TESTER_SHOULD_IMPORT_NUMPY
 #include "numpy_includes.hpp"
 
-#include <pybind11/numpy.h>
 #include "ndarray.hpp"
-#include "tester_common.hpp"
+#include "ndarray_adapter.hpp"
+#include "array_meta.hpp"
+
+#include <pybind11/numpy.h>
 
 namespace py = pybind11;
+using namespace bench;
+using namespace tester;
 
-namespace tester
-{
+// ──────────────────────────────────────────────────────────────
+// Helpers: thin lambda wrappers so each binding is one line.
+// The "unconstrained" variants accept any array; the "typed" variants
+// let the binding layer enforce constraints before the body runs.
+// ──────────────────────────────────────────────────────────────
 
 template<typename... Args>
-static ArrayMetadata extract_metadata(const NDArray<Args...>& a)
+auto wrap_noop()
 {
-
-    ArrayMetadata metadata;
-    metadata.data_ptr = reinterpret_cast<uintptr_t>(a.data());
-    metadata.ndim = a.ndim();
-
-    return metadata;
+    return [](const NDArray<Args...>& a) { noop(to_meta(a)); };
 }
-
-static ArrayMetadata extract_metadata_manual(py::handle obj)
+template<typename... Args>
+auto wrap_read_ndim()
 {
-    if (PyArray_Check(obj.ptr()))
-    {
-        //return ArrayMetadata(reinterpret_cast<PyArrayObject*>(obj.ptr()));
-        return ArrayMetadata();
-    }
-    else
-    {
-        throw std::runtime_error("Not a numpy array");
-    }
+    return [](const NDArray<Args...>& a) { return read_ndim(to_meta(a)); };
+}
+template<typename... Args>
+auto wrap_read_shape_sum()
+{
+    return [](const NDArray<Args...>& a) { return read_shape_sum(to_meta(a)); };
+}
+template<typename... Args>
+auto wrap_check_full_rt(DType dt, int nd)
+{
+    // "rt" = runtime check: constraints passed as values, not baked into type.
+    return [dt, nd](const NDArray<Args...>& a) { check_full(to_meta(a), dt, nd); };
+}
+template<typename... Args>
+auto wrap_check_full_typed()
+{
+    // "typed": binding layer already enforced dtype/ndim/contiguity via NDArray<Args...>.
+    // Body intentionally does nothing extra — we're measuring binding overhead only.
+    return [](const NDArray<Args...>& a) { noop(to_meta(a)); };
 }
 
 PYBIND11_MODULE(pybind_ext, m)
 {
-    // Numpy array imports
     import_array1();
 
-    namespace py = pybind11;
+    // ── Group 1: unconstrained array, varying body cost ───────────────────
+    // Baseline: pure call overhead with the least work possible in the body.
+    m.def("noop_any",            wrap_noop<>());
+    m.def("read_ndim_any",       wrap_read_ndim<>());
+    m.def("read_shape_sum_any",  wrap_read_shape_sum<>());
+    m.def("read_stride_sum_any", [](const NDArray<>& a)
+    {
+        return read_stride_sum(to_meta(a));
+    });
+    m.def("check_data_ptr_any",  [](const NDArray<>& a)
+    {
+        return check_data_ptr(to_meta(a));
+    });
 
-    py::class_<ArrayMetadata>(m, "ArrayMetadata")
-        .def_readwrite("data_ptr", &ArrayMetadata::data_ptr)
-        .def_readwrite("ndim", &ArrayMetadata::ndim);
+    // Runtime checks: body does the validation work.
+    m.def("check_dtype_rt",    [](const NDArray<>& a)
+    {
+        check_dtype(to_meta(a), DType::Float64);
+    });
+    m.def("check_ndim_rt",     [](const NDArray<>& a)
+    {
+        check_ndim(to_meta(a), 3);
+    });
+    m.def("check_c_contig_rt", [](const NDArray<>& a)
+    {
+        return check_c_contig(to_meta(a));
+    });
+    m.def("check_full_rt", wrap_check_full_rt<>(DType::Float64, 3));
 
-    m.def("extract_metadata_manual", &extract_metadata_manual);
+    // ── Group 2: type-constrained — binding layer enforces, body is a no-op ─
+    // Compare these against their Group-1 runtime counterparts to isolate
+    // where pybind11 vs nanobind spend time on constraint checking.
+    m.def("noop_f64_3d_cc",
+        wrap_noop<double, c_contig, ndim<3>>());
+    m.def("noop_cf128_2x3_fc_cpu",
+        wrap_noop<std::complex<double>, f_contig, device::cpu, shape<2,3>>());
+    m.def("check_full_typed_f64_3d",
+        wrap_check_full_typed<double, c_contig, ndim<3>>());
 
-    m.def("extract_metadata_any", &extract_metadata<>);
-    m.def("extract_metadata_cpu", &extract_metadata<device::cpu>);
-    m.def("extract_metadata_gpu", &extract_metadata<device::gpu>);
-    m.def("extract_metadata_float", &extract_metadata<float>);
-    m.def("extract_metadata_complexdouble", &extract_metadata<std::complex<double>>);
-    m.def("extract_metadata_c_contig", &extract_metadata<c_contig>);
-    m.def("extract_metadata_2D", &extract_metadata<ndim<2>>);
-    m.def("extract_metadata_shape_1_2_3", &extract_metadata<shape<1, 2, 3>>);
-    m.def("extract_metadata_shape_any", &extract_metadata<shape<-1>>);
-    m.def("extract_metadata_shape_2_any", &extract_metadata<shape<2, -1>>);
-    m.def("extract_metadata_double_c_contig_3D", &extract_metadata<double, c_contig, ndim<3>>);
-    m.def("extract_metadata_complexdouble_f_contig_cpu_shape_2_3", &extract_metadata<std::complex<double>, f_contig, device::cpu, shape<2, 3>>);
-    m.def("extract_metadata_complexdouble_c_contig_cpu_shape_2_3", &extract_metadata<std::complex<double>, c_contig, device::cpu, shape<2, 3>>);
-    m.def("extract_metadata_complexfloat_c_contig_gpu_shape_any_any", &extract_metadata<std::complex<float>, c_contig, device::gpu, shape<-1, -1>>);
+    // ── Group 3: multi-array — measures per-argument overhead scaling ──────
+    // Lets you check whether cost is O(1) or O(n_args).
+    m.def("noop_two_arrays", [](const NDArray<>& a, const NDArray<>& b)
+    {
+        noop(to_meta(a)); noop(to_meta(b));
+    });
+    m.def("noop_four_arrays",
+        [](const NDArray<>& a, const NDArray<>& b,
+           const NDArray<>& c, const NDArray<>& d) {
+            noop(to_meta(a)); noop(to_meta(b));
+            noop(to_meta(c)); noop(to_meta(d));
+    });
+
+    // ── Group 4: scalar-returning — ensures Python doesn't short-circuit ──
+    // Returns a value so Python must actually process the result.
+    m.def("return_ndim",      wrap_read_ndim<>());
+    m.def("return_shape_sum", wrap_read_shape_sum<>());
+    m.def("return_itemsize",  [](const NDArray<>& a)
+    {
+        return to_meta(a).itemsize;
+    });
 }
-
-} // namespace tester
