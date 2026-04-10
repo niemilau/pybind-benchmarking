@@ -48,6 +48,7 @@ auto wrap_check_full_typed()
     return [](const NDArray<Args...>& a) { noop(to_meta(a)); };
 }
 
+
 PYBIND11_MODULE(pybind_ext, m)
 {
     import_array1();
@@ -66,7 +67,7 @@ PYBIND11_MODULE(pybind_ext, m)
         return check_data_ptr(to_meta(a));
     });
 
-    // Runtime checks: body does the validation work.
+    // ── Group 2: runtime checks — body does the validation
     m.def("check_dtype_rt",    [](const NDArray<>& a)
     {
         check_dtype(to_meta(a), DType::Float64);
@@ -81,7 +82,7 @@ PYBIND11_MODULE(pybind_ext, m)
     });
     m.def("check_full_rt", wrap_check_full_rt<>(DType::Float64, 3));
 
-    // ── Group 2: type-constrained — binding layer enforces, body is a no-op ─
+    // ── Group 3: type-constrained — binding layer enforces, body is a no-op ─
     // Compare these against their Group-1 runtime counterparts to isolate
     // where pybind11 vs nanobind spend time on constraint checking.
     m.def("noop_f64_3d_cc",
@@ -91,7 +92,7 @@ PYBIND11_MODULE(pybind_ext, m)
     m.def("check_full_typed_f64_3d",
         wrap_check_full_typed<double, c_contig, ndim<3>>());
 
-    // ── Group 3: multi-array — measures per-argument overhead scaling ──────
+    // ── Group 4: multi-array — measures per-argument overhead scaling ──────
     // Lets you check whether cost is O(1) or O(n_args).
     m.def("noop_two_arrays", [](const NDArray<>& a, const NDArray<>& b)
     {
@@ -104,7 +105,7 @@ PYBIND11_MODULE(pybind_ext, m)
             noop(to_meta(c)); noop(to_meta(d));
     });
 
-    // ── Group 4: scalar-returning — ensures Python doesn't short-circuit ──
+    // ── Group 5: scalar-returning — ensures Python doesn't short-circuit ──
     // Returns a value so Python must actually process the result.
     m.def("return_ndim",      wrap_read_ndim<>());
     m.def("return_shape_sum", wrap_read_shape_sum<>());

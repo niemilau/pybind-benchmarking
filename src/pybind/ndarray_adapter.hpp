@@ -72,9 +72,7 @@ ArrayMeta to_meta(const NDArray<Args...>& a)
         m.dtype = dtype_from_pybind(a.dtype());
     }
 
-    // Not implemented in NDArray:
-    m.device = Device::Unknown;
-    //m.device = (a.device() == 0 /*cpu tag*/) ? Device::CPU : Device::GPU;
+    m.device = a.is_on_gpu() ? Device::GPU : Device::CPU;
 
     for (int i = 0; i < m.ndim && i < 8; ++i)
     {

@@ -235,30 +235,45 @@ def benchmark_backend(
     verbose: bool = False,
 ) -> list[BenchResult]:
     cases = collect_cases(mod)
-    results: list[BenchResult] = []
 
+    # One Timer per case, created upfront
+    timers = {}
     for case in cases:
-        if verbose:
-            print(f"  {case.name} ...", end="", flush=True)
+        if case.expect_raise:
+            def make_stmt(fn, args):
+                def stmt():
+                    try: fn(*args)
+                    except Exception: pass
+                return stmt
+            timers[case.name] = timeit.Timer(make_stmt(case.fn, case.args))
+        else:
+            def make_stmt(fn, args):
+                def stmt(): _sink(fn(*args))
+                return stmt
+            timers[case.name] = timeit.Timer(make_stmt(case.fn, case.args))
 
-        times, err = run_case(case, warmup=warmup, runs=runs,
-                              iters_per_run=iters_per_run)
-        if err:
-            print(f"\n  WARNING [{case.name}]: {err}")
+    # Warmup all cases before measuring any of them
+    for case in cases:
+        timers[case.name].timeit(warmup)
+
+    # Collect samples by interleaving: one run per case, repeat `runs` times.
+    # This distributes cache/thermal effects evenly across all cases.
+    samples: dict[str, list[float]] = {case.name: [] for case in cases}
+    for _ in range(runs):
+        for case in cases:
+            t = timers[case.name].timeit(iters_per_run)
+            samples[case.name].append(t / iters_per_run * 1e9)
+
+    results = []
+    for case in cases:
+        if case.name not in samples:
             continue
-
-        result = BenchResult(
+        results.append(BenchResult(
             backend=backend_name,
             case=case,
             n_runs=runs,
-            times_ns=times,
-        )
-        results.append(result)
-
-        if verbose:
-            noise = f"  cv={result.cv_pct:.1f}%" if result.cv_pct > 5 else ""
-            print(f"  min={result.min_ns:7.1f} ns  mean={result.mean_ns:7.1f} ns{noise}")
-
+            times_ns=samples[case.name],
+        ))
     return results
 
 
