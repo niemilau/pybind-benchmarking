@@ -291,6 +291,8 @@ struct TESTER_HIDDEN_SYMBOL ArrayDesc
     std::vector<int64_t> strides;
     // Offset is TODO. Libraries don't really seem to use this ATM
     static constexpr uint64_t byte_offset = 0;
+
+    bool on_gpu;
 };
 
 } // namespace detail
@@ -324,6 +326,7 @@ public:
     const int64_t* shape_ptr() const { return desc.shape.data(); }
     const int64_t* stride_ptr() const { return desc.strides.data(); }
     bool is_valid() const { return !handle.is(py::handle(nullptr)); }
+    bool is_on_gpu() const { return desc.on_gpu; }
 
     // Number of elements in the array
     size_t size() const
@@ -521,6 +524,15 @@ inline bool ndarray_import_impl(
     else if constexpr (traits::is_gpu && framework != Framework::eCupy)
     {
         return false;
+    }
+
+    if constexpr (framework == Framework::eNumpy)
+    {
+        out.on_gpu = false;
+    }
+    else
+    {
+        out.on_gpu = true;
     }
 
     out.data = ArrayAccessors::data(arr);
