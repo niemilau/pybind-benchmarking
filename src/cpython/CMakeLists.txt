@@ -1,0 +1,4 @@
+FILE(GLOB SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*)
+Python_add_library(cpython_ext MODULE ${SOURCES})
+
+install(TARGETS cpython_ext DESTINATION ${EXT_INSTALL_DIR})

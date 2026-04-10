@@ -39,6 +39,7 @@ nanobind_add_module(nanobind_ext NOMINSIZE src/nanobind_ext.cpp)
 set(EXT_INSTALL_DIR ${CMAKE_SOURCE_DIR})
 include_directories(src/)
 
+add_subdirectory(src/cpython)
 # Separate module with pybind11 for performance comparison
 add_subdirectory(src/pybind)
 

@@ -40,6 +40,10 @@ def make_cf128_2x3_fc() -> np.ndarray:
     """complex128, shape (2, 3), Fortran-contiguous."""
     return np.asfortranarray(np.zeros((2, 3), dtype=np.complex128))
 
+def make_cf128_2x3_cc() -> np.ndarray:
+    """complex128, shape (2, 3), C-contiguous."""
+    return np.asfortranarray(np.zeros((2, 3), dtype=np.complex128))
+
 def make_f64_1d() -> np.ndarray:
     return np.zeros(16, dtype=np.float64)
 
@@ -87,6 +91,7 @@ def collect_cases(mod: types.ModuleType) -> list[BenchCase]:
     arr_f64_3d_cc    = make_f64_3d_cc()
     arr_f64_3d_fc    = make_f64_3d_fc()
     arr_cf128_2x3_fc = make_cf128_2x3_fc()
+    arr_cf128_2x3_cc = make_cf128_2x3_cc()
 
     return [
         # ── Group 1: unconstrained input, varying body cost ───────────────
@@ -106,7 +111,7 @@ def collect_cases(mod: types.ModuleType) -> list[BenchCase]:
         BenchCase("check_c_contig_rt",  f.check_c_contig_rt,  (arr_f64_3d_cc,),   group="2_runtime_check"),
         BenchCase("check_full_rt",      f.check_full_rt,      (arr_f64_3d_cc,),   group="2_runtime_check"),
         # Same function, wrong dtype — measures the error-path cost.
-        BenchCase("check_dtype_rt/fail", f.check_dtype_rt,    (arr_cf128_2x3_fc,),
+        BenchCase("check_dtype_rt/fail", f.check_dtype_rt,    (arr_cf128_2x3_cc,),
                   group="2_runtime_check", expect_raise=True),
 
         # ── Group 3: type-constrained — binding layer enforces, body is noop
@@ -116,6 +121,8 @@ def collect_cases(mod: types.ModuleType) -> list[BenchCase]:
                   f.noop_f64_3d_cc, (arr_f64_3d_cc,), group="3_typed"),
         BenchCase("noop_cf128_2x3_fc_cpu",
                   f.noop_cf128_2x3_fc_cpu, (arr_cf128_2x3_fc,), group="3_typed"),
+        BenchCase("noop_cf128_2x3_cc_cpu",
+                  f.noop_cf128_2x3_fc_cpu, (arr_cf128_2x3_cc,), group="3_typed"),
         BenchCase("check_full_typed_f64_3d",
                   f.check_full_typed_f64_3d, (arr_f64_3d_cc,), group="3_typed"),
         # Rejection: pass wrong dtype to a typed function.
@@ -341,7 +348,7 @@ def print_csv(all_results: list[BenchResult]) -> None:
 KNOWN_BACKENDS: dict[str, str] = {
     "pybind":   "pybind_ext",
     "nanobind": "nanobind_ext",   # not yet built — skipped automatically
-    "cpython":  "cpython_ext",    # not yet built — skipped automatically
+    "cpython":  "cpython_ext",
 }
 
 
