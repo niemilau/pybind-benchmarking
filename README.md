@@ -1,6 +1,6 @@
 # pybind-benchmarking
 
-Comparing performance of nanobind vs pybind11 (custom NDArray wrapper) vs raw CPython when passing Numpy arrays to C++.
+Comparing performance cost of passing Numpy arrays to C++: nanobind vs pybind11 (with custom NDArray wrapper) vs raw CPython.
 
 **CAUTION:** The benchmarking code and test cases are vibe coded and have not yet been fully scrutinized. The manual `ndarray.hpp` wrapper used with pybind11 is handwritten.
 
