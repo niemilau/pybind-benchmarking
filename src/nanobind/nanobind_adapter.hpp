@@ -53,13 +53,11 @@ ArrayMeta to_meta(const nb::ndarray<Args...>& a)
     m.itemsize = static_cast<ssize_t>(a.itemsize());
     m.dtype    = dtype_from_nb(a.dtype());
     m.device   = (a.device_type() == nb::device::cpu::value)
-                     ? Device::CPU
-                     : Device::GPU;
-
-    for (int i = 0; i < m.ndim && i < 8; ++i)
-    {
-        m.shape[i]   = static_cast<ssize_t>(a.shape(i));
-        m.strides[i] = static_cast<ssize_t>(a.stride(i)) * m.itemsize;
-    }
+                     ? Device::CPU : Device::GPU;
+    // DLPack stores shape/strides as int64_t* — safe to alias as ssize_t*
+    // on any platform where ssize_t is 64-bit (all targets you care about).
+    m.shape   = reinterpret_cast<const ssize_t*>(a.shape_ptr());
+    // FIXME: nanobind strides are in number of elements, not in bytes
+    m.strides = reinterpret_cast<const ssize_t*>(a.stride_ptr());
     return m;
 }

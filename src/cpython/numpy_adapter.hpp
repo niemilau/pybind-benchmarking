@@ -21,28 +21,16 @@ inline DType dtype_from_numpy(int typenum)
 }
 
 // Returns false and sets a Python TypeError if obj is not a numpy array.
-inline bool to_meta(PyObject* obj, ArrayMeta& out)
+inline bool to_meta(PyObject* obj, ArrayMeta& m)
 {
-    if (!PyArray_Check(obj))
-    {
-        PyErr_SetString(PyExc_TypeError, "expected a numpy ndarray");
-        return false;
-    }
-
+    if (!PyArray_Check(obj)) { PyErr_SetString(PyExc_TypeError, "expected ndarray"); return false; }
     PyArrayObject* arr = reinterpret_cast<PyArrayObject*>(obj);
-
-    out.data     = PyArray_DATA(arr);
-    out.ndim     = static_cast<int>(PyArray_NDIM(arr));
-    out.itemsize = static_cast<ssize_t>(PyArray_ITEMSIZE(arr));
-    out.dtype    = dtype_from_numpy(PyArray_TYPE(arr));
-    out.device   = Device::CPU;
-
-    npy_intp* shape   = PyArray_SHAPE(arr);
-    npy_intp* strides = PyArray_STRIDES(arr);
-    for (int i = 0; i < out.ndim && i < 8; ++i)
-    {
-        out.shape[i]   = static_cast<ssize_t>(shape[i]);
-        out.strides[i] = static_cast<ssize_t>(strides[i]);
-    }
+    m.data     = PyArray_DATA(arr);
+    m.ndim     = static_cast<int>(PyArray_NDIM(arr));
+    m.itemsize = static_cast<ssize_t>(PyArray_ITEMSIZE(arr));
+    m.dtype    = dtype_from_numpy(PyArray_TYPE(arr));
+    m.device   = Device::CPU;
+    m.shape    = reinterpret_cast<const ssize_t*>(PyArray_SHAPE(arr));
+    m.strides  = reinterpret_cast<const ssize_t*>(PyArray_STRIDES(arr));
     return true;
 }

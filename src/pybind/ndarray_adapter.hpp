@@ -74,10 +74,8 @@ ArrayMeta to_meta(const NDArray<Args...>& a)
 
     m.device = a.is_on_gpu() ? Device::GPU : Device::CPU;
 
-    for (int i = 0; i < m.ndim && i < 8; ++i)
-    {
-        m.shape[i]   = static_cast<ssize_t>(a.shape(i));
-        m.strides[i] = static_cast<ssize_t>(a.stride(i));
-    }
+    m.shape = reinterpret_cast<const ssize_t*>(a.shape_ptr());
+    m.strides = reinterpret_cast<const ssize_t*>(a.stride_ptr());
+
     return m;
 }

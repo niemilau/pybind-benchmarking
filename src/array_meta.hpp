@@ -19,13 +19,14 @@ enum class Device : uint8_t { CPU, GPU, Unknown };
 
 struct ArrayMeta
 {
-    void*    data     = nullptr;
-    int      ndim     = 0;
-    ssize_t  shape[8] = {};
-    ssize_t  strides[8] = {};   // in bytes
-    ssize_t  itemsize = 0;
-    DType    dtype    = DType::Unknown;
-    Device   device   = Device::Unknown;
+    void*           data     = nullptr;
+    int             ndim     = 0;
+    // Keep shape/strides as non-owning views so that we avoid copying them when benchmarking
+    const ssize_t*  shape    = nullptr;  // non-owning
+    const ssize_t*  strides  = nullptr;  // non-owning
+    ssize_t         itemsize = 0;
+    DType           dtype    = DType::Unknown;
+    Device          device   = Device::Unknown;
 };
 
 // ──────────────────────────────────────────────────────────────
