@@ -14,6 +14,11 @@ if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 
+add_compile_options(
+    $<$<CONFIG:Release,RelWithDebInfo>:-march=native>
+    $<$<CONFIG:Release,RelWithDebInfo>:-funroll-loops>
+)
+
 # Get numpy CFLAGS, include dirs in particular
 execute_process(
   COMMAND numpy-config --cflags
