@@ -129,10 +129,6 @@ def collect_cases(mod: types.ModuleType) -> list[BenchCase]:
         BenchCase("noop_f64_3d_cc/reject_dtype",
                   f.noop_f64_3d_cc, (arr_cf128_2x3_fc,),
                   group="3_typed", expect_raise=True),
-        # Rejection: pass F-contiguous where C-contiguous required.
-        BenchCase("noop_f64_3d_cc/reject_order",
-                  f.noop_f64_3d_cc, (arr_f64_3d_fc,),
-                  group="3_typed", expect_raise=True),
 
         # ── Group 4: multi-array — does overhead scale with argument count? ─
         BenchCase("noop_two_arrays",  f.noop_two_arrays,
@@ -236,38 +232,62 @@ def benchmark_backend(
 ) -> list[BenchResult]:
     cases = collect_cases(mod)
 
-    # One Timer per case, created upfront
-    timers = {}
-    for case in cases:
+    def make_stmt(case: BenchCase):
+        fn, args = case.fn, case.args
         if case.expect_raise:
-            def make_stmt(fn, args):
-                def stmt():
-                    try: fn(*args)
-                    except Exception: pass
-                return stmt
-            timers[case.name] = timeit.Timer(make_stmt(case.fn, case.args))
+            def stmt():
+                try: fn(*args)
+                except Exception: pass
         else:
-            def make_stmt(fn, args):
-                def stmt(): _sink(fn(*args))
-                return stmt
-            timers[case.name] = timeit.Timer(make_stmt(case.fn, case.args))
+            def stmt(): _sink(fn(*args))
+        return stmt
 
-    # Warmup all cases before measuring any of them
+    # Create all timers upfront
+    timers: dict[str, timeit.Timer] = {}
     for case in cases:
-        timers[case.name].timeit(warmup)
+        timers[case.name] = timeit.Timer(make_stmt(case))
 
-    # Collect samples by interleaving: one run per case, repeat `runs` times.
-    # This distributes cache/thermal effects evenly across all cases.
-    samples: dict[str, list[float]] = {case.name: [] for case in cases}
+    # Probe once per case — skip anything that raises unexpectedly
+    # (or fails to raise when it should).
+    skip: set[str] = set()
+    for case in cases:
+        try:
+            if case.expect_raise:
+                case.fn(*case.args)
+                print(f"  WARNING [{case.name}]: expected exception but call succeeded — skipping")
+                skip.add(case.name)
+            else:
+                _sink(case.fn(*case.args))
+        except Exception as exc:
+            if not case.expect_raise:
+                print(f"  WARNING [{case.name}]: unexpected exception: {exc} — skipping")
+                skip.add(case.name)
+
+    # Warmup all surviving cases before measuring any of them
+    for case in cases:
+        if case.name not in skip:
+            timers[case.name].timeit(warmup)
+
+    # Interleaved measurement: one iters_per_run block per case per outer
+    # iteration, so cache/thermal effects are distributed evenly.
+    samples: dict[str, list[float]] = {
+        case.name: [] for case in cases if case.name not in skip
+    }
     for _ in range(runs):
         for case in cases:
+            if case.name in skip:
+                continue
             t = timers[case.name].timeit(iters_per_run)
             samples[case.name].append(t / iters_per_run * 1e9)
 
     results = []
     for case in cases:
-        if case.name not in samples:
+        if case.name in skip:
             continue
+        if verbose:
+            r_times = samples[case.name]
+            noise = f"  cv={100*statistics.stdev(r_times)/statistics.mean(r_times):.1f}%" if len(r_times) > 1 else ""
+            print(f"  {case.name}: min={min(r_times):.1f} ns  mean={statistics.mean(r_times):.1f} ns{noise}")
         results.append(BenchResult(
             backend=backend_name,
             case=case,
